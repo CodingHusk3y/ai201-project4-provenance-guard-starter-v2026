@@ -53,35 +53,70 @@
 
 ### Signal one — the model signal
 
-**What it measures:**
+**What it measures:** Language-model predictability (perplexity), converted to
+a score from 0.0 to 1.0. Higher means the local model finds the writing easier
+to predict and therefore more AI-like.
 
-**Why that might differ between human and AI writing:**
+**Why that might differ between human and AI writing:** Generated writing
+tends to choose probable next words and familiar sentence patterns, while
+human writing can contain more surprising personal choices and abrupt turns.
 
-**What it can't see:**
+**What it can't see:** Predictability is not authorship. Plain writing by a
+real person, including writing by a second-language writer, can be highly
+predictable; unusual or heavily edited AI text can be less predictable.
 
 ### Signal two — the style signal
 
-**What it measures:**
+**What it measures:** Sentence-length spread, type-token ratio (unique words
+divided by total words), and varied punctuation density. These are normalized
+and combined into a 0.0 to 1.0 score, where higher means more AI-like.
 
-**Why that might differ between human and AI writing:**
+**Why that might differ between human and AI writing:** Generated prose often
+has regular sentence lengths, repeated likely vocabulary, and restrained
+punctuation. Human prose is often more uneven and idiosyncratic.
 
-**What it can't see:**
+**What it can't see:** It cannot understand meaning or identify authorship.
+Typos, sentence splitting, punctuation edits, or inserted quotations can
+change the score without changing the substance.
 
 ### The combining rule
 
 <!-- Write the rule in words, then give the numbers. What happens when the two
      signals disagree? -->
 
-**The rule:**
+**The rule:** The final score is a weighted average of the two scores. The
+signals point in the same direction, so a higher result always means more
+AI-like. Disagreement is retained as uncertainty in the middle rather than
+allowing either signal to override the other.
 
-**The numbers:**
+**The numbers:** `0.50 * model_score + 0.50 * style_score`, rounded to four
+decimal places and clamped to the 0.0–1.0 range. The weights come from
+`config.WEIGHT_MODEL_SIGNAL` and `config.WEIGHT_STYLE_SIGNAL`.
 
 **Where it lives:** `scoring.py::combine_signals`
 
 <!-- ⚠️ The grader checks your code against that line. If your rule lives
      somewhere else, say where. -->
 
-**A case where my two signals split, and what my rule does with it:**
+**A case where my two signals split, and what my rule does with it:** The
+clearly human sample in the calibration run produced a model score of `0.5844`
+and a style score of `0.4831`. The model leaned AI-like while stylometry
+leaned more human-like; the weighted average preserves that disagreement
+instead of making either signal decisive on its own.
+
+**Calibration run (same text passed to both signals):**
+
+| Input | Model score | Style score | Combined score |
+|---|---:|---:|---:|
+| Clearly AI | 0.6987 | 0.5574 | 0.6280 |
+| Clearly human | 0.5844 | 0.4831 | 0.5337 |
+| Formal human | 0.3785 | 0.6154 | 0.4970 |
+| Lightly edited AI | 0.3486 | 0.4270 | 0.3878 |
+
+The formal human sample is a useful disagreement case in the opposite
+direction: its style score was higher than its model score. The lightly edited
+AI sample also shows the blind spots of both signals, landing much closer to
+the human side than its source category suggests.
 
 
 
@@ -116,29 +151,28 @@
 
 **A submission**
 
-<!-- The response needs content_id, guess, confidence, label, AND both
-     signal scores - model_score and style_score. Unit 8's tools read those
-     two off the response, so leaving them out costs you next unit's
-     diagnostics. -->
+<!-- The response needs content_id, guess, confidence, label, both signal
+     scores, and the combined score. Unit 8's tools read the two component
+     scores directly, so leaving them out costs the later diagnostics. -->
 
 ```bash
 $ curl -X POST http://127.0.0.1:5000/submit \
   -H "Content-Type: application/json" \
-  -d '{"text": "The meeting was useful. I am still unsure whether the simpler plan will work. We will know more once people start using it.", "creator_id": "writer-2"}'
+  -d '{"text": "The implementation of the proposed framework requires careful consideration of several key factors. First, it is important to note that the system must support diverse inputs. Additionally, overall performance depends on multiple variables.", "creator_id": "calibration-ai"}'
 ```
 
 ```json
-{"confidence":0.0,"content_id":"a04b5182-34a0-4a3e-8a1a-76a9c5c0ab25","guess":null,"label":"placeholder","model_score":0.3807}
+{"combined_score":0.628,"confidence":0.0,"content_id":"47b0f7ba-5481-4d6f-b6d4-cb174ca72c59","guess":null,"label":"placeholder","model_score":0.6987,"style_score":0.5574}
 ```
 
 **The audit log**
 
 ```bash
-$ curl "http://127.0.0.1:5000/log?limit=2"
+$ curl "http://127.0.0.1:5000/log?limit=1"
 ```
 
 ```json
-{"count":2,"entries":[{"combined_score":null,"content_id":"5ba22fb5-3bb2-4f83-a5fb-1b145bddbd0b","creator_id":"writer-1","guess":null,"label":null,"model_score":0.5519,"status":"decided","style_score":null,"timestamp":"2026-10-28T23:14:20+00:00"},{"combined_score":null,"content_id":"a04b5182-34a0-4a3e-8a1a-76a9c5c0ab25","creator_id":"writer-2","guess":null,"label":null,"model_score":0.3807,"status":"decided","style_score":null,"timestamp":"2026-10-28T23:14:43+00:00"}]}
+{"count":1,"entries":[{"combined_score":0.628,"content_id":"47b0f7ba-5481-4d6f-b6d4-cb174ca72c59","creator_id":"calibration-ai","guess":null,"label":null,"model_score":0.6987,"status":"decided","style_score":0.5574,"timestamp":"2026-10-28T23:19:44+00:00"}]}
 ```
 
 **What the log shows afterwards**
