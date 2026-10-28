@@ -39,7 +39,21 @@
 <!-- The path a submission takes, from arriving to the label a reader sees.
      Six or seven steps — this is the trace you wrote in Milestone 1. -->
 
-
+1. A writer sends JSON containing `text` and `creator_id` to `POST /submit`.
+2. The route extracts the text and creates a unique `content_id` for the
+   submission.
+3. `detector.model_signal(text)` measures how predictable the text is to the
+   local language model and returns `model_score`.
+4. `stylometry.style_signal(text)` measures sentence-length variation,
+   vocabulary repetition, and punctuation density and returns `style_score`.
+5. `scoring.combine_signals(model_score, style_score)` applies the configured
+   50/50 weighted average and produces `combined_score`.
+6. `scoring.score_to_label(combined_score)` maps that score to `human`,
+   `unsure`, or `ai`, along with a full sentence a reader can understand.
+7. The route writes the decision and both signal scores to
+   `logs/audit.jsonl`, then returns the content ID, scores, guess, confidence,
+   and label. If the writer appeals, `POST /appeal` appends an
+   `under_review` event for the same content ID.
 
 ---
 
@@ -203,15 +217,33 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 
 **Moment 1**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I asked for help tracing the service from `POST /submit`
+  through the detector, stylometry, scoring, label mapping, and audit log,
+  including the blind spot of each signal and the false-positive appeal path.
+- *What came back:* The response organized the pipeline into seven stages and
+  identified that model predictability can accuse a plain human writer, while
+  stylometry can be changed by sentence splitting, punctuation edits, or
+  inserted quotations without changing meaning.
+- *What I changed:* I used that trace to write the acceptance criteria in
+  `criteria.md`, especially the false-positive limit, reachable-label check,
+  appeal recording requirement, and explicit bad-input behavior. I kept the
+  blind spots in the README rather than treating either signal as proof of
+  authorship.
 
 **Moment 2**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I asked for a review of the two-signal implementation
+  and for calibration of clearly AI, clearly human, formal human, and
+  lightly edited AI samples, with both component scores shown.
+- *What came back:* The calibration showed the formal-human sample splitting:
+  the model score was `0.3785` while the style score was `0.6154`. It also
+  showed that lightly edited AI text could land near the human side at
+  `0.3486` model, `0.4270` style, and `0.3878` combined.
+- *What I changed:* I retained a 50/50 weighted average in
+  `scoring.py::combine_signals` so disagreement remains visible as
+  uncertainty instead of letting one imperfect signal override the other. I
+  documented the numbers and the split case in the Signals and Scoring
+  section, then added the three reader-facing labels and the appeal path.
 
 <!-- ═══════════════════════ UNIT 8 — THE TEST ═══════════════════════ -->
 
