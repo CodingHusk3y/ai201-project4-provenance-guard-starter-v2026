@@ -124,23 +124,21 @@
 ```bash
 $ curl -X POST http://127.0.0.1:5000/submit \
   -H "Content-Type: application/json" \
-  -d '{"text": "...", "creator_id": "..."}'
+  -d '{"text": "The meeting was useful. I am still unsure whether the simpler plan will work. We will know more once people start using it.", "creator_id": "writer-2"}'
 ```
 
 ```json
-
+{"confidence":0.0,"content_id":"a04b5182-34a0-4a3e-8a1a-76a9c5c0ab25","guess":null,"label":"placeholder","model_score":0.3807}
 ```
 
-**An appeal**
+**The audit log**
 
 ```bash
-$ curl -X POST http://127.0.0.1:5000/appeal \
-  -H "Content-Type: application/json" \
-  -d '{"content_id": "...", "reasoning": "..."}'
+$ curl "http://127.0.0.1:5000/log?limit=2"
 ```
 
 ```json
-
+{"count":2,"entries":[{"combined_score":null,"content_id":"5ba22fb5-3bb2-4f83-a5fb-1b145bddbd0b","creator_id":"writer-1","guess":null,"label":null,"model_score":0.5519,"status":"decided","style_score":null,"timestamp":"2026-10-28T23:14:20+00:00"},{"combined_score":null,"content_id":"a04b5182-34a0-4a3e-8a1a-76a9c5c0ab25","creator_id":"writer-2","guess":null,"label":null,"model_score":0.3807,"status":"decided","style_score":null,"timestamp":"2026-10-28T23:14:43+00:00"}]}
 ```
 
 **What the log shows afterwards**
