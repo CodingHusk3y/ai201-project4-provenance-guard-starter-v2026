@@ -44,11 +44,13 @@ Two things worth knowing before you pick numbers:
 ---
 ## 1.
 
-<!-- Your criterion. It must name a number. -->
+Of 10 independently written human samples, at most 1 may receive the
+high-confidence AI label. This result must hold in each of the three
+evaluation trials.
 
-
-
-**Why this target:**
+**Why this target:** A wrong accusation costs a genuine writer more than a
+missed detection costs the site. Requiring the target in all three trials
+keeps one lucky run from hiding an unstable false-positive rate.
 
 
 
@@ -56,11 +58,14 @@ Two things worth knowing before you pick numbers:
 
 ## 2.
 
-<!-- Your criterion. -->
+For a calibration set of 5 clearly human and 5 clearly AI samples, the mean
+combined score for the AI group must be at least 0.20 higher than the mean for
+the human group. At least 4 of the 5 AI samples must score above 0.50, and at
+least 4 of the 5 human samples must score below 0.50.
 
-
-
-**Why this target:**
+**Why this target:** Perfect separation is not realistic for two imperfect
+signals, but a 0.20 mean gap and mostly correct sides of 0.50 show that the
+scores provide useful separation rather than clustering together.
 
 
 
@@ -68,11 +73,14 @@ Two things worth knowing before you pick numbers:
 
 ## 3.
 
-<!-- Your criterion. -->
+At least one test submission must produce each machine-readable guess:
+`human`, `unsure`, and `ai`. For each submission, the reader-facing label must
+match the guess and the combined score must be inside that label's configured
+threshold range.
 
-
-
-**Why this target:**
+**Why this target:** All three outcomes must be reachable for the service to
+express uncertainty. This also catches a broken or unvarying stylometry
+signal, or thresholds that make one label impossible to produce.
 
 
 
@@ -80,11 +88,15 @@ Two things worth knowing before you pick numbers:
 
 ## 4.
 
-<!-- Your criterion. -->
+For every successful submission, an appeal using its returned `content_id` and
+non-empty reasoning must return HTTP 200, report status `under_review`, and
+append an audit-log entry containing that content ID, an appeal event, the
+reasoning, and status `under_review`. An appeal with an unknown content ID must
+return HTTP 404 and must not append an appeal entry.
 
-
-
-**Why this target:**
+**Why this target:** A writer needs a reliable remedy after a wrong decision.
+Checking both the response and the durable log makes the status transition
+observable instead of trusting a success-shaped response.
 
 
 
@@ -92,11 +104,14 @@ Two things worth knowing before you pick numbers:
 
 ## 5.
 
-<!-- Your criterion. -->
+`POST /submit` must return JSON HTTP 400 for missing JSON, missing `text`, an
+empty or whitespace-only `text`, and a non-string `text`. It must return HTTP
+413 for text larger than the documented maximum. These requests must not invoke
+either signal or create a normal `decided` audit entry.
 
-
-
-**Why this target:**
+**Why this target:** Rejecting bad input before model execution prevents
+crashes, wasted model work, and misleading decisions. A separate 413 response
+lets clients distinguish a size violation from ordinary validation failure.
 
 
 
