@@ -1,5 +1,5 @@
 """
-Turning two numbers into one, and one number into something a person can read.
+Turning three numbers into one, and one number into something a person can read.
 ← YOU BUILD THIS IN MILESTONES 4 AND 5
 
 Two functions live here, and both are stubs.
@@ -19,9 +19,15 @@ you claim, so that line should read `scoring.py::combine_signals`.
 import config
 
 
-def combine_signals(model_score: float, style_score: float) -> float:
+def combine_signals(
+    model_score: float,
+    style_score: float,
+    lexical_score: float | None = None,
+) -> float:
     """
-    Combine two 0–1 signals into one 0–1 score. ← TODO (Milestone 4)
+    Combine three 0–1 signals into one 0–1 score. With only two arguments,
+    retain the original two-signal 50/50 behavior for callers from earlier
+    milestones.
 
     Both inputs point the same way: higher means more likely AI. Your output
     should too.
@@ -52,10 +58,14 @@ def combine_signals(model_score: float, style_score: float) -> float:
     The weights in config.py are placeholders. Change them, or ignore them and
     write a different rule.
     """
-    combined = (
-        config.WEIGHT_MODEL_SIGNAL * model_score
-        + config.WEIGHT_STYLE_SIGNAL * style_score
-    )
+    if lexical_score is None:
+        combined = 0.5 * model_score + 0.5 * style_score
+    else:
+        combined = (
+            config.WEIGHT_MODEL_SIGNAL * model_score
+            + config.WEIGHT_STYLE_SIGNAL * style_score
+            + config.WEIGHT_LEXICAL_SIGNAL * lexical_score
+        )
     return round(min(max(combined, 0.0), 1.0), 4)
 
 

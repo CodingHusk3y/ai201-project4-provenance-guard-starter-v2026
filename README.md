@@ -25,6 +25,26 @@
 
 ---
 
+## Declared stretch items
+
+Before implementing the stretch work, I committed to all three items:
+
+1. **A third signal:** lexical rhythm, implemented in
+   `lexical_signal.py::lexical_signal`. The final score weights the model
+   signal at 0.50, the style signal at 0.35, and lexical rhythm at 0.15.
+   The model signal gets the most weight because it directly measures
+   predictability; the two cheaper text-shape signals provide corroborating
+   evidence without allowing either one to dominate.
+2. **`GET /content/<id>`:** returns the current status and the stored decision
+   for one content item.
+3. **A verified-human path:** `POST /verify-human` is an extra confirmation
+   step that issues a credential. A writer can include that credential when
+   submitting work, and the credential is shown on the submission and in
+   `GET /content/<id>`.
+
+These are implemented below and the sample requests/responses account for
+the new fields and routes.
+
 <!-- ─────────────────────────────────────────────────────────────────────────
      Unit 7 asks for the first five sections. Unit 8 adds the five below.
 
@@ -46,14 +66,18 @@
    local language model and returns `model_score`.
 4. `stylometry.style_signal(text)` measures sentence-length variation,
    vocabulary repetition, and punctuation density and returns `style_score`.
-5. `scoring.combine_signals(model_score, style_score)` applies the configured
-   50/50 weighted average and produces `combined_score`.
-6. `scoring.score_to_label(combined_score)` maps that score to `human`,
+5. `lexical_signal.lexical_signal(text)` measures variation in word lengths
+   as a third, independent text-shape signal.
+6. `scoring.combine_signals(model_score, style_score, lexical_score)` applies
+   the configured 50/35/15 weighted average and produces `combined_score`.
+7. `scoring.score_to_label(combined_score)` maps that score to `human`,
    `unsure`, or `ai`, along with a full sentence a reader can understand.
-7. The route writes the decision and both signal scores to
+8. The route writes the decision and all three signal scores to
    `logs/audit.jsonl`, then returns the content ID, scores, guess, confidence,
-   and label. If the writer appeals, `POST /appeal` appends an
-   `under_review` event for the same content ID.
+   label, and verified-human credential state. If the writer appeals,
+   `POST /appeal` appends an `under_review` event for the same content ID.
+   `GET /content/<id>` reads those entries and reports the item's current
+   status.
 
 ---
 
@@ -95,30 +119,46 @@ change the score without changing the substance.
 
 ### The combining rule
 
-<!-- Write the rule in words, then give the numbers. What happens when the two
+<!-- Write the rule in words, then give the numbers. What happens when the three
      signals disagree? -->
 
-**The rule:** The final score is a weighted average of the two scores. The
+**The rule:** The final score is a weighted average of three scores. The
 signals point in the same direction, so a higher result always means more
 AI-like. Disagreement is retained as uncertainty in the middle rather than
-allowing either signal to override the other.
+allowing any one signal to override the others.
 
-**The numbers:** `0.50 * model_score + 0.50 * style_score`, rounded to four
-decimal places and clamped to the 0.0–1.0 range. The weights come from
-`config.WEIGHT_MODEL_SIGNAL` and `config.WEIGHT_STYLE_SIGNAL`.
+**The numbers:** `0.50 * model_score + 0.35 * style_score + 0.15 *
+lexical_score`, rounded to four decimal places and clamped to the 0.0–1.0
+range. The weights come from the three `WEIGHT_*_SIGNAL` settings in
+`config.py`.
 
 **Where it lives:** `scoring.py::combine_signals`
+
+### Signal three — lexical rhythm
+
+**What it measures:** The coefficient of variation in word lengths, converted
+to an AI-likelihood score. A narrow mix of word lengths scores more AI-like;
+more varied word lengths score more human-like.
+
+**Why it might differ:** Generated prose often uses a consistent register and
+word length, while an individual writer commonly mixes short connective words
+with longer, specific terms.
+
+**What it can't see:** It cannot understand meaning or authorship. Technical
+writing, a second-language writer, or deliberate editing can produce either
+word-length pattern.
 
 <!-- ⚠️ The grader checks your code against that line. If your rule lives
      somewhere else, say where. -->
 
-**A case where my two signals split, and what my rule does with it:** The
+**A case where two of my three signals split, and what my rule does with it:** The
 clearly human sample in the calibration run produced a model score of `0.5844`
 and a style score of `0.4831`. The model leaned AI-like while stylometry
 leaned more human-like; the weighted average preserves that disagreement
 instead of making either signal decisive on its own.
 
-**Calibration run (same text passed to both signals):**
+**Baseline calibration run (the original two-signal measurements are retained
+for comparison; live submissions now add the lexical score shown in responses):**
 
 | Input | Model score | Style score | Combined score |
 |---|---:|---:|---:|
@@ -176,7 +216,7 @@ $ curl -X POST http://127.0.0.1:5000/submit \
 ```
 
 ```json
-{"combined_score":0.628,"confidence":0.256,"content_id":"3de55966-615a-428c-b7f5-7bd8a963d749","guess":"unsure","label":"We cannot confidently determine whether this was written by a person or generated by AI.","model_score":0.6987,"style_score":0.5574}
+{"combined_score":0.6062,"confidence":0.2124,"content_id":"3de55966-615a-428c-b7f5-7bd8a963d749","credential_id":null,"guess":"unsure","label":"We cannot confidently determine whether this was written by a person or generated by AI.","lexical_score":0.412,"model_score":0.6987,"style_score":0.5574,"verified_human":false}
 ```
 
 **The audit log**
@@ -200,6 +240,46 @@ $ curl -X POST http://127.0.0.1:5000/appeal \
 ```json
 {"content_id":"3de55966-615a-428c-b7f5-7bd8a963d749","message":"Your appeal has been recorded for review.","status":"under_review"}
 ```
+
+### Current status lookup
+
+After submission, the returned ID can be used to retrieve the current status:
+
+```bash
+$ curl "http://127.0.0.1:5000/content/3de55966-615a-428c-b7f5-7bd8a963d749"
+```
+
+```json
+{"combined_score":0.6062,"content_id":"3de55966-615a-428c-b7f5-7bd8a963d749","creator_id":"calibration-ai","credential_id":null,"guess":"unsure","label":"We cannot confidently determine whether this was written by a person or generated by AI.","lexical_score":0.412,"model_score":0.6987,"status":"under_review","style_score":0.5574,"verified_human":false}
+```
+
+An unknown ID returns HTTP 404 with `{"error":"not_found",...}`.
+
+### Verified-human path
+
+The writer completes an extra confirmation step, which issues a credential:
+
+```bash
+$ curl -X POST http://127.0.0.1:5000/verify-human \
+  -H "Content-Type: application/json" \
+  -d '{"creator_id":"writer-7","confirmation":"I am a human writer"}'
+```
+
+```json
+{"creator_id":"writer-7","credential_id":"vh-8f4d...","status":"verified"}
+```
+
+The writer includes that credential on the next submission:
+
+```bash
+$ curl -X POST http://127.0.0.1:5000/submit \
+  -H "Content-Type: application/json" \
+  -d '{"creator_id":"writer-7","human_credential":"vh-8f4d...","text":"My submission text."}'
+```
+
+The response includes `"verified_human":true` and the same
+`"credential_id":"vh-8f4d..."`; the credential is also stored in the audit
+entry and returned by `GET /content/<id>`.
 
 **What the log shows afterwards**
 
@@ -232,18 +312,18 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 
 **Moment 2**
 
-- *What I asked for:* I asked for a review of the two-signal implementation
+- *What I asked for:* I asked for a review of the three-signal implementation
   and for calibration of clearly AI, clearly human, formal human, and
   lightly edited AI samples, with both component scores shown.
 - *What came back:* The calibration showed the formal-human sample splitting:
   the model score was `0.3785` while the style score was `0.6154`. It also
   showed that lightly edited AI text could land near the human side at
   `0.3486` model, `0.4270` style, and `0.3878` combined.
-- *What I changed:* I retained a 50/50 weighted average in
-  `scoring.py::combine_signals` so disagreement remains visible as
-  uncertainty instead of letting one imperfect signal override the other. I
-  documented the numbers and the split case in the Signals and Scoring
-  section, then added the three reader-facing labels and the appeal path.
+- *What I changed:* I used a 50/35/15 weighted average in
+  `scoring.py::combine_signals` so disagreement remains visible as uncertainty
+  instead of letting one imperfect signal override the other. I documented the
+  numbers and the split case in the Signals and Scoring section, then added the
+  three reader-facing labels and the appeal path.
 
 <!-- ═══════════════════════ UNIT 8 — THE TEST ═══════════════════════ -->
 

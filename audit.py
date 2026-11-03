@@ -92,6 +92,28 @@ def log_appeal(content_id: str, creator_id: str, reasoning: str) -> dict:
     })
 
 
+def log_human_verification(creator_id: str, credential_id: str) -> dict:
+    """Record a verified-human credential issued through the extra step."""
+    return _append({
+        "timestamp": _now(),
+        "creator_id": creator_id,
+        "event": "human_verification",
+        "status": "verified",
+        "credential_id": credential_id,
+    })
+
+
+def credential_for_creator(creator_id: str) -> str | None:
+    """Return the most recently issued credential for a creator, if any."""
+    credentials = [
+        entry for entry in read_entries()
+        if entry.get("event") == "human_verification"
+        and entry.get("creator_id") == creator_id
+        and isinstance(entry.get("credential_id"), str)
+    ]
+    return credentials[-1]["credential_id"] if credentials else None
+
+
 def log_rejection(creator_id: str, reason: str, **extra) -> dict:
     """
     Record a request that never became a decision — a rate-limit rejection or

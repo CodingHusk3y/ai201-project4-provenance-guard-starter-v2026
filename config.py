@@ -55,7 +55,8 @@ DETECTOR_MAX_TOKENS = 400
 # decide, it goes here.
 
 WEIGHT_MODEL_SIGNAL = 0.5
-WEIGHT_STYLE_SIGNAL = 0.5
+WEIGHT_STYLE_SIGNAL = 0.35
+WEIGHT_LEXICAL_SIGNAL = 0.15
 
 
 # ─── Thresholds (Milestone 5) ────────────────────────────────────────────────
@@ -101,6 +102,9 @@ RATE_LIMIT_PER_DAY = 200
 # and wrong for anything real — a restart forgets every count, and two copies
 # of the service wouldn't share limits.
 RATE_LIMIT_STORAGE = "memory://"
+
+# Reject oversized requests before invoking the local model.
+MAX_TEXT_LENGTH = 10_000
 
 
 # ─── Paths ───────────────────────────────────────────────────────────────────

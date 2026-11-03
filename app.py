@@ -20,6 +20,8 @@ Routes:
     POST /ping        the worked example. Already works. Don't edit it
     POST /submit      ← YOU BUILD THIS (Milestone 3, 4, 5)
     POST /appeal      ← YOU BUILD THIS (Milestone 5)
+    POST /verify-human earns a verified-human credential
+    GET  /content/<id> returns one item's current status
     GET  /log         the audit log. Already works
     GET  /health      is the service up, and is the model loaded
 """
@@ -31,6 +33,7 @@ from flask import Flask, jsonify, request
 import audit
 import config
 import detector
+import lexical_signal
 import scoring
 import stylometry
 
@@ -136,6 +139,39 @@ def ping():
     })
 
 
+@app.get("/content/<content_id>")
+def get_content(content_id):
+    """Return the latest status and decision data for one submission."""
+    entries = audit.entries_for(content_id)
+    decision = next(
+        (entry for entry in reversed(entries) if entry.get("status") == "decided"),
+        None,
+    )
+    if decision is None:
+        return jsonify({
+            "error": "not_found",
+            "message": "No submission exists for this content_id.",
+        }), 404
+
+    current_status = "under_review" if any(
+        entry.get("event") == "appeal" and entry.get("status") == "under_review"
+        for entry in entries
+    ) else decision.get("status", "decided")
+    return jsonify({
+        "content_id": content_id,
+        "creator_id": decision.get("creator_id"),
+        "status": current_status,
+        "guess": decision.get("guess"),
+        "label": decision.get("label"),
+        "model_score": decision.get("model_score"),
+        "style_score": decision.get("style_score"),
+        "lexical_score": decision.get("lexical_score"),
+        "combined_score": decision.get("combined_score"),
+        "verified_human": decision.get("verified_human", False),
+        "credential_id": decision.get("credential_id"),
+    })
+
+
 @app.get("/health")
 def health():
     """Is the service up, and has the model been downloaded yet?"""
@@ -202,15 +238,46 @@ def submit():
     what should this do when `text` is missing, empty, or enormous? A crash on
     a malformed input is one of the most common real failures there is.
     """
-    payload = request.get_json(silent=True) or {}
-    text = payload.get("text", "")
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({
+            "error": "invalid_request",
+            "message": "A JSON object with text and creator_id is required.",
+        }), 400
+
+    text = payload.get("text")
     creator_id = payload.get("creator_id", "")
+    if not isinstance(text, str) or not text.strip():
+        return jsonify({
+            "error": "invalid_request",
+            "message": "text must be a non-empty string.",
+        }), 400
+    if len(text) > config.MAX_TEXT_LENGTH:
+        return jsonify({
+            "error": "content_too_large",
+            "message": f"text must be at most {config.MAX_TEXT_LENGTH} characters.",
+        }), 413
+    if not isinstance(creator_id, str) or not creator_id.strip():
+        return jsonify({
+            "error": "invalid_request",
+            "message": "creator_id must be a non-empty string.",
+        }), 400
+
+    creator_id = creator_id.strip()
     content_id = str(uuid.uuid4())
     model_score = detector.model_signal(text)
     style_score = stylometry.style_signal(text)
-    combined_score = scoring.combine_signals(model_score, style_score)
+    lexical_score = lexical_signal.lexical_signal(text)
+    combined_score = scoring.combine_signals(
+        model_score, style_score, lexical_score
+    )
     guess, label = scoring.score_to_label(combined_score)
     confidence = round(abs(combined_score - 0.5) * 2, 4)
+    credential_id = payload.get("human_credential")
+    verified_human = (
+        isinstance(credential_id, str)
+        and credential_id == audit.credential_for_creator(creator_id)
+    )
 
     audit.log_decision(
         content_id=content_id,
@@ -218,9 +285,12 @@ def submit():
         guess=guess,
         model_score=model_score,
         style_score=style_score,
+        lexical_score=lexical_score,
         combined_score=combined_score,
         label=label,
         status="decided",
+        verified_human=verified_human,
+        credential_id=credential_id if verified_human else None,
     )
 
     return jsonify({
@@ -230,7 +300,42 @@ def submit():
         "label": label,
         "model_score": model_score,
         "style_score": style_score,
+        "lexical_score": lexical_score,
         "combined_score": combined_score,
+        "verified_human": verified_human,
+        "credential_id": credential_id if verified_human else None,
+    })
+
+
+@app.post("/verify-human")
+def verify_human():
+    """Issue a credential after the writer completes the verification step."""
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({
+            "error": "invalid_request",
+            "message": "A JSON object is required.",
+        }), 400
+
+    creator_id = payload.get("creator_id")
+    confirmation = payload.get("confirmation")
+    if not isinstance(creator_id, str) or not creator_id.strip():
+        return jsonify({
+            "error": "invalid_request",
+            "message": "creator_id is required.",
+        }), 400
+    if confirmation != "I am a human writer":
+        return jsonify({
+            "error": "verification_failed",
+            "message": "Complete the human confirmation step exactly.",
+        }), 400
+
+    credential_id = f"vh-{uuid.uuid4()}"
+    audit.log_human_verification(creator_id.strip(), credential_id)
+    return jsonify({
+        "creator_id": creator_id.strip(),
+        "credential_id": credential_id,
+        "status": "verified",
     })
 
 
