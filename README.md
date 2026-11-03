@@ -331,7 +331,7 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 
 ## Rate Limiting
 
-**My limits:** ___ per minute, ___ per day
+**My limits:** 10 per minute, 200 per day
 
 **Why those numbers and not others:**
 <!-- Think about two people: a real writer submitting their own work a few
@@ -339,17 +339,28 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
      thresholds. Your numbers have to be liveable for the first and hostile to
      the second. -->
 
-**What a caller counts as:** <!-- per address, or per creator_id? They fail
-differently — one script can look like a thousand callers, and one household
-can look like one. -->
+Ten submissions per minute leaves room for a writer to submit drafts and
+revisions without waiting, while a burst of automated variations is stopped
+quickly. The 200-per-day ceiling allows a busy writing day but limits a script
+trying to map the thresholds over many hours.
+
+**What a caller counts as:** `creator_id`. A script cannot evade the limit by
+changing network addresses, while separate writers on one household network do
+not share a bucket.
 
 **The run of status codes when I pushed past it:**
 
 <!-- python run_attacks.py --flood 15 -->
 
 ```
-
+200 200 200 200 200 200 200 200 200 200 429 429 429 429 429
 ```
+
+The run produced 5 rate-limited requests out of 15 and wrote
+`results/flood_2026-11-03_2112.md`. The 429 handler also wrote rejection entries
+to the audit log. Three additional submissions and a missing-text request were
+checked through `GET /log`; the three decisions had all nine required fields,
+and the invalid request appeared as `missing_or_empty_text`.
 
 ---
 

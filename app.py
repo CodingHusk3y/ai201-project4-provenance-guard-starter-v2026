@@ -190,7 +190,7 @@ def health():
 # ── YOU BUILD THIS ────────────────────────────────────────────────────────────
 
 @app.post("/submit")
-# @limiter.limit(f"{config.RATE_LIMIT_PER_MINUTE}/minute;{config.RATE_LIMIT_PER_DAY}/day")
+@limiter.limit(f"{config.RATE_LIMIT_PER_MINUTE}/minute;{config.RATE_LIMIT_PER_DAY}/day")
 def submit():
     """
     Take a piece of text, decide about it, log the decision, answer.
@@ -238,8 +238,14 @@ def submit():
     what should this do when `text` is missing, empty, or enormous? A crash on
     a malformed input is one of the most common real failures there is.
     """
+    def reject(creator_id, reason, **details):
+        if not isinstance(creator_id, str) or not creator_id.strip():
+            creator_id = "unknown"
+        audit.log_rejection(creator_id.strip(), reason, **details)
+
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
+        reject("unknown", "invalid_payload")
         return jsonify({
             "error": "invalid_request",
             "message": "A JSON object with text and creator_id is required.",
@@ -248,16 +254,19 @@ def submit():
     text = payload.get("text")
     creator_id = payload.get("creator_id", "")
     if not isinstance(text, str) or not text.strip():
+        reject(creator_id, "missing_or_empty_text")
         return jsonify({
             "error": "invalid_request",
             "message": "text must be a non-empty string.",
         }), 400
     if len(text) > config.MAX_TEXT_LENGTH:
+        reject(creator_id, "content_too_large", limit=config.MAX_TEXT_LENGTH)
         return jsonify({
             "error": "content_too_large",
             "message": f"text must be at most {config.MAX_TEXT_LENGTH} characters.",
         }), 413
     if not isinstance(creator_id, str) or not creator_id.strip():
+        reject(creator_id, "missing_or_empty_creator_id")
         return jsonify({
             "error": "invalid_request",
             "message": "creator_id must be a non-empty string.",
