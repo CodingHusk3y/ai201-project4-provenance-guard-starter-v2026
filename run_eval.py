@@ -60,6 +60,8 @@ def bodies_for(scenario):
 
 def describe(body):
     """A short, readable note of what was sent — for the report."""
+    if body is None:
+        return "(no JSON body)"
     if set(body) == {"text", "creator_id"} and isinstance(body.get("text"), str):
         text = body["text"]
         return text[:70] if text else "(empty text)"
@@ -128,6 +130,34 @@ def main():
                         "label": payload.get("label"),
                         "sent": preview,
                     })
+                    if scenario.get("appeal") and response.status_code == 200:
+                        content_id = payload.get("content_id")
+                        appeal = requests.post(
+                            f"{args.url}/appeal",
+                            json={
+                                "content_id": content_id,
+                                "reasoning": "I wrote this submission myself and request review.",
+                            },
+                            timeout=args.timeout,
+                        )
+                        results[-1]["appeal"] = {
+                            "status": appeal.status_code,
+                            "payload": appeal.json() if appeal.content else {},
+                            "content_id": content_id,
+                        }
+                    if scenario.get("appeal") and i == len(bodies_for(scenario)):
+                        unknown = requests.post(
+                            f"{args.url}/appeal",
+                            json={
+                                "content_id": "00000000-0000-0000-0000-000000000000",
+                                "reasoning": "This ID does not exist.",
+                            },
+                            timeout=args.timeout,
+                        )
+                        results[-1]["unknown_appeal"] = {
+                            "status": unknown.status_code,
+                            "payload": unknown.json() if unknown.content else {},
+                        }
                 except Exception as exc:  # noqa: BLE001
                     results.append({"status": None, "error": f"{type(exc).__name__}: {exc}",
                                     "sent": preview})
