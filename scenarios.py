@@ -67,7 +67,7 @@ SCENARIOS = [
         # is low-score, and the ordinary mixed passage should remain unsure.
         "texts": [
             "The importance of effective communication in the workplace cannot be overstated. Teams that communicate clearly are better positioned to achieve their objectives and avoid costly misunderstandings. The importance of effective communication in the workplace cannot be overstated. Teams that communicate clearly are better positioned to achieve their objectives and avoid costly misunderstandings.",
-            "\x00\x01\x02 test \x1b[31mred\x1b[0m",
+            "I made tea.",
             "The committee reviewed the available options and agreed that a phased approach would reduce risk. Each stage will have a defined owner, a short review period, and a documented decision before the next stage begins.",
         ],
     },

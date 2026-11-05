@@ -265,6 +265,25 @@ def submit():
             "error": "content_too_large",
             "message": f"text must be at most {config.MAX_TEXT_LENGTH} characters.",
         }), 413
+    has_control_character = any(
+        ord(character) < 32 and character not in "\t\n\r"
+        for character in text
+    )
+    has_alphanumeric = any(character.isalnum() for character in text)
+    is_oversized_single_token = len(text) > 1000 and not any(
+        character.isspace() for character in text
+    )
+    if (
+        len(text) < 2
+        or has_control_character
+        or not has_alphanumeric
+        or is_oversized_single_token
+    ):
+        reject(creator_id, "unsupported_text_shape")
+        return jsonify({
+            "error": "invalid_request",
+            "message": "text must contain usable linguistic content.",
+        }), 400
     if not isinstance(creator_id, str) or not creator_id.strip():
         reject(creator_id, "missing_or_empty_creator_id")
         return jsonify({

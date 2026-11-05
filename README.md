@@ -45,6 +45,17 @@ Before implementing the stretch work, I committed to all three items:
 These are implemented below and the sample requests/responses account for
 the new fields and routes.
 
+**Additional stretch declaration — second measured improvement:** I will add
+route-level validation for unusable text, then run the full attack set and all
+five criteria again as a third, separately labeled run. I will measure whether
+it removes the malformed-input failures without changing ordinary decisions.
+
+**Stretch-status note:** The service uses per-creator rate-limit keys, and the
+README explains that behavior below, but that implementation predates a
+declaration for this stretch rubric, so I do not claim the per-creator stretch
+point. I was not given another team's service or a permitted target, so I
+cannot honestly claim the three-attacks-on-someone-else's-system point.
+
 <!-- ─────────────────────────────────────────────────────────────────────────
      Unit 7 asks for the first five sections. Unit 8 adds the five below.
 
@@ -698,6 +709,38 @@ The cost is deliberate: more borderline AI-like text is now reported as
 false positives, and it gives the reader uncertainty rather than an
 unsupported authorship accusation.
 
+### Second measured improvement — route validation
+
+**What I changed:** Before the detector or stylometry runs, the route now
+rejects text that is too short, contains control characters, contains no
+alphanumeric content, or is an oversized single token. This is one change at
+the route-validation stage; the signals, weights, and thresholds were not
+changed.
+
+**Third run log:** The complete attack-set report is
+`results/attack_run_2026-11-04_1943_after2.md`, and the third criteria report
+is `results/run_2026-11-04_1945_after2.md`. The attack set changed from
+**31 held / 25 broke** after the threshold improvement to **36 held / 20
+broke** after validation. MF02 and MF03–MF06 are now rejected with HTTP 400
+instead of crashing or becoming decisions. MF07 (right-to-left text) remains
+the one malformed decision; it contains alphanumeric Unicode and therefore
+was intentionally not rejected by this general rule.
+
+| Criterion | After threshold change | After route validation | Verdict |
+|---|---|---|---|
+| 1. My own writing flagged as AI | 0/10, 0/10, 0/10 | 0/10, 0/10, 0/10 | **MET** |
+| 2. Score separation | gap 0.121 in every trial | gap 0.121 in every trial | **MISSED** |
+| 3. All labels reachable | 3/3 in every trial | 3/3 in every trial | **MET** |
+| 4. Appeal path | 2/2 plus unknown 404 in every trial | 2/2 plus unknown 404 in every trial | **MET** |
+| 5. Bad input | 7/7 in every trial | 7/7 in every trial | **MET** |
+
+**Did the second improvement help:** Yes. It removed five malformed decisions
+and the MF02 HTTP 500, reducing broken attacks by five without changing the
+ordinary evasion, false-positive, prompt-injection, flood, or label-coverage
+results. It did not fix MF07 because a broad “reject all non-ASCII text” rule
+would also reject legitimate multilingual writing; I stopped there rather
+than imposing that policy without evidence.
+
 
 
 ---
@@ -707,7 +750,7 @@ unsupported authorship accusation.
 <!-- For each attack still getting through and each criterion still missed:
      what you'd do, and why you stopped. -->
 
-Twenty-five attack cases still broke after the one permitted improvement. The
+Twenty attack cases still broke after the two measured improvements. The
 remaining cases and the next fix I would make are:
 
 | Still-broken attacks | What I would do next | Why I stopped |
@@ -721,9 +764,7 @@ remaining cases and the next fix I would make are:
 | EV07 | Normalize punctuation padding before stylometry runs. | I stopped to avoid changing route normalization and signal two together. |
 | EV08 | Reject or separately handle text below the model's useful context window. | This combines input validation with model-policy work. |
 | EV09 | Aggregate evidence across the whole submission so a human opening cannot dominate. | It needs a chunking design that was not tested here. |
-| MF02 | Reject one-character text before signal one runs. | This is the clearest crash fix, but I selected the threshold experiment first. |
-| MF03, MF04 | Reject control-character-only and punctuation-only text before either signal runs. | I deferred route validation so the threshold result stayed attributable to one change. |
-| MF05, MF06, MF07 | Validate linguistic content and unsupported Unicode/token shapes before scoring. | This needs explicit product policy for emoji, scripts, and long tokens. |
+| MF07 | Add a Unicode-aware policy for right-to-left text, perhaps language-aware token validation or a separate calibration path. | I stopped because rejecting all non-ASCII text would wrongly reject legitimate multilingual writing. |
 | FL01_01–FL01_10 | Lower the per-minute limit or use a stricter burst/window policy. | The current `10 per minute` policy is intentional and the final two requests were correctly rejected with 429. |
 
 Criterion 2 also remains **MISSED**: changing the threshold changed only label
