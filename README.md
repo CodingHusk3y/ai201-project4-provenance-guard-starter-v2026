@@ -325,6 +325,24 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
   numbers and the split case in the Signals and Scoring section, then added the
   three reader-facing labels and the appeal path.
 
+**Moment 3 — Unit 8 evaluation and one controlled improvement**
+
+- *What I asked for:* I asked for executable scenarios for my own writing,
+  score-range samples, appeals, and malformed requests, then ran all five
+  criteria three times.
+- *What came back:* Criteria 1, 3, 4, and 5 met their targets. Criterion 2
+  missed because the AI/human combined-score gap was `0.121`, below `0.20`.
+  The attack run also found two genuine-human false positives, FP05 and FP07,
+  just above the `0.65` AI threshold.
+- *What I changed:* I made one controlled change: raised `AI_THRESHOLD` from
+  `0.65` to `0.70`. I reran the complete attack set and all five criteria
+  three times. FP05 and FP07 moved to `unsure`, reducing broken attacks from
+  27 to 25, while the score-separation, malformed-input, and evasion
+  weaknesses remained visible.
+- *What I learned:* Fewer human writers received an AI accusation, but more
+  borderline AI text is left for review. I stopped after one change so the
+  measured effect stayed attributable to the threshold.
+
 <!-- ═══════════════════════ UNIT 8 — THE TEST ═══════════════════════ -->
 
 ---
@@ -689,21 +707,30 @@ unsupported authorship accusation.
 <!-- For each attack still getting through and each criterion still missed:
      what you'd do, and why you stopped. -->
 
-Twenty-five attack cases still broke after the one permitted improvement.
-EV01–EV09 remain evasion failures because the style and model signals still
-misread edited, short, or shape-manipulated AI text; the stage is the signals
-and their weighted combining rule. MF02 remains a route/model boundary crash
-because a one-character string reaches the model signal instead of being
-rejected. MF03–MF07 remain route-validation failures because non-linguistic
-Unicode, punctuation, and single-token inputs still receive decisions.
-FL01_01–FL01_10 remain rate-limit failures because the configured bucket
-allows ten submissions before returning 429.
+Twenty-five attack cases still broke after the one permitted improvement. The
+remaining cases and the next fix I would make are:
 
-Criterion 2 also remains **MISSED**: the threshold change only changes label
+| Still-broken attacks | What I would do next | Why I stopped |
+|---|---|---|
+| EV01 | Add calibration for typo-heavy AI text instead of treating misspellings as human-like variety. | This changes signal behavior, so I did not combine it with the threshold experiment. |
+| EV02 | Reduce the effect of artificial sentence splitting on the style score. | It requires changing signal two and a fresh calibration run. |
+| EV03 | Detect pasted quotation blocks and score surrounding text separately. | This is a new route/signal design outside the one-change experiment. |
+| EV04 | Calibrate unusual-word handling so high perplexity alone cannot make generated prose look human. | It requires changing signal one, which would weaken the controlled comparison. |
+| EV05 | Add a human-editing robustness check or recalibrate the style weight. | This would be a signal-weight change, not a threshold change. |
+| EV06 | Cap the contribution of extreme sentence-length spread. | It needs a style-signal change and new score calibration. |
+| EV07 | Normalize punctuation padding before stylometry runs. | I stopped to avoid changing route normalization and signal two together. |
+| EV08 | Reject or separately handle text below the model's useful context window. | This combines input validation with model-policy work. |
+| EV09 | Aggregate evidence across the whole submission so a human opening cannot dominate. | It needs a chunking design that was not tested here. |
+| MF02 | Reject one-character text before signal one runs. | This is the clearest crash fix, but I selected the threshold experiment first. |
+| MF03, MF04 | Reject control-character-only and punctuation-only text before either signal runs. | I deferred route validation so the threshold result stayed attributable to one change. |
+| MF05, MF06, MF07 | Validate linguistic content and unsupported Unicode/token shapes before scoring. | This needs explicit product policy for emoji, scripts, and long tokens. |
+| FL01_01–FL01_10 | Lower the per-minute limit or use a stricter burst/window policy. | The current `10 per minute` policy is intentional and the final two requests were correctly rejected with 429. |
+
+Criterion 2 also remains **MISSED**: changing the threshold changed only label
 mapping, not the combined scores, so the human/AI mean gap stayed at `0.121`.
-The next separate experiment would be input validation for malformed text or
-signal recalibration, but I stopped after one change so its effect remains
-measurable.
+The next separate experiment would be signal recalibration or input
+validation. I stopped after one change because additional fixes would make it
+impossible to tell which change moved the measurements.
 
 
 **The trade I'd make if this ran for real:**
