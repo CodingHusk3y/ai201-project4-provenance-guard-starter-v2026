@@ -531,6 +531,89 @@ The following are the actual trial-1 JSON arrays from
 
      Look for a pattern. Five failures on one signal is one problem, not five. -->
 
+### Criterion verdicts
+
+- **Criterion 1 — MET.** All three trials classified `0/10` of my own
+  samples as high-confidence AI, meeting the target of at most `1/10`.
+- **Criterion 2 — MISSED.** The human mean was `0.427` and the AI mean was
+  `0.547`, a gap of only `0.121` rather than the required `0.20`. Four of
+  five AI samples were above `0.50`, but the mean-gap requirement still failed
+  in all three identical trials. The stage is the **combining rule**: the
+  weighted model/style/lexical average compresses these groups into the
+  unsure band instead of preserving enough separation. The mechanism is that
+  the model and style signals disagree or remain moderate on formal text, and
+  the weights (`0.50/0.35/0.15`) produce combined scores near the middle.
+- **Criterion 3 — MET.** The three submissions reached `ai`, `human`, and
+  `unsure` in every trial, and each reader-facing label matched its score
+  band.
+- **Criterion 4 — MET.** Both known-content appeals returned `200` with
+  `under_review`, and the unknown ID returned `404`. The log contained the
+  appeal event and reasoning.
+- **Criterion 5 — MET.** The no-body, missing-field, empty, whitespace,
+  non-string, and oversized requests returned the required `400`/`413`
+  responses without normal decisions.
+
+### Broken attack diagnoses by pattern
+
+The attack run had 27 broken cases. These are grouped by mechanism; each group
+names every affected attack ID.
+
+- **Signal two — text-shape manipulation:** EV01, EV02, EV03, EV06, and EV07
+  all changed punctuation, sentence boundaries, quotations, or typo/word
+  variety in AI-like text. The style signal measures sentence-length spread,
+  vocabulary repetition, and punctuation density rather than authorship, so
+  those edits made generated text look more varied or human-like. The
+  **combining rule** then weighted that style score at `0.35`, pulling the
+  combined score into `human` or `unsure`. This is one signal-two blind spot,
+  not five unrelated route failures.
+- **Signal one — predictability blind spots:** EV04 used unusual words and
+  EV08 placed text below the detector's useful token window. Unusual wording
+  raised perplexity, while short/window-limited input gave the local model
+  too little context. The **model signal** therefore under-read the AI
+  source; the combining rule received a misleading low model score and the
+  label mapping produced `unsure` or `human`.
+- **Both signals plus the combining rule:** EV05 used a heavy human-editing
+  pass and EV09 bolted a human opening onto AI text. Those changes altered
+  both predictability and surface style, so both imperfect signals moved
+  downward. The **combining rule** averaged the weakened evidence and the
+  **label mapping** consequently returned `human` or `unsure` instead of AI.
+- **False positives at the label boundary:** FP05 and FP07 were genuine human
+  writing but received combined scores `0.6622` and `0.6546`, just above the
+  AI threshold of `0.65`. The **model signal** found technical/formulaic or
+  deliberately repetitive language predictable, and the **style signal**
+  found its regular vocabulary/punctuation machine-like. The **combining
+  rule** preserved both high scores, and the **label mapping** turned a
+  borderline result into the high-confidence-AI accusation rather than
+  `unsure`.
+- **Malformed input reaching the detector:** MF02 returned HTTP 500 for a
+  single-character text. The stage is the **route/signal-one boundary**:
+  route validation allowed the non-empty string through, then the model
+  signal could not handle the too-short input and the unhandled exception
+  produced a 500. MF03 and MF04 likewise passed control-character and
+  punctuation-only text through the **route**, which did not reject
+  semantically unusable text; the model and style signals then manufactured
+  `human` scores from those inputs. MF05, MF06, and MF07 passed a very long
+  token, emoji-only text, and right-to-left text through the route; the
+  **signals** interpreted unusual tokenization/Unicode shapes as strong
+  evidence and the **label mapping** emitted `ai`. These are validation
+  failures first: the route should reject unsupported or non-linguistic
+  content before either signal runs.
+- **Flood acceptance before the limit:** FL01_01 through FL01_10 were accepted
+  before FL01_11 and FL01_12 received `429`. The stage is the **route's rate
+  limiting** layer, not either detector signal. The mechanism is the selected
+  `10 per minute` policy: the first ten requests fit inside the configured
+  bucket, so a 20-request burst can still create ten decisions before the
+  limiter rejects the remainder. The limiter held the final two, but the
+  attack goal was not fully prevented.
+
+The dominant pattern is that the detector treats surface form as evidence of
+authorship. The next improvement should therefore address input validation and
+the signal/threshold calibration together: reject unusable text at the route,
+and widen the unsure protection around the AI boundary rather than letting
+technical human prose become an AI accusation. Criterion 2's miss is evidence
+that the current weighted scores also do not separate formal human and AI
+writing enough to justify confident labels.
+
 
 
 ---
